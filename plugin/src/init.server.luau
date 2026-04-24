@@ -17,7 +17,7 @@ local widget = plugin:CreateDockWidgetPluginGui(
 	DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, false, true, 500, 250, 500, 250)
 )
 
-local toggleButton = toolbar:CreateButton("Toggle Gui", "Toggle gui visibility", "rbxassetid://70908610154639")
+local toggleButton = toolbar:CreateButton("Toggle Gui", "Toggle gui visibility", "rbxassetid://83178708216253")
 toggleButton.Click:Connect(function() widget.Enabled = not widget.Enabled end)
 
 widget:GetPropertyChangedSignal("Enabled"):Connect(function() toggleButton:SetActive(widget.Enabled) end)
