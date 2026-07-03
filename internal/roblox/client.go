@@ -28,6 +28,16 @@ func NewClient(cookie string) (*Client, error) {
 	c := &Client{
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
+			// The reuploader keeps dozens of concurrent requests going to the same few
+			// Roblox hosts; the default transport only keeps 2 idle conns per host, so
+			// most requests pay a fresh TLS handshake. Keep a bigger idle pool instead.
+			Transport: &http.Transport{
+				Proxy:               http.ProxyFromEnvironment,
+				MaxIdleConns:        128,
+				MaxIdleConnsPerHost: 32,
+				IdleConnTimeout:     90 * time.Second,
+				ForceAttemptHTTP2:   true,
+			},
 		},
 	}
 

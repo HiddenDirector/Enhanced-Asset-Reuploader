@@ -145,45 +145,38 @@ func newCreateAssetRequest(
 		return nil, err
 	}
 
-	pr, pw := io.Pipe()
-	writer := multipart.NewWriter(pw)
+	// The asset data is already fully in memory, so build the multipart body in
+	// memory too: the request gets a real Content-Length (no chunked encoding) and
+	// no per-attempt pipe goroutine.
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
 	formDataContentType := writer.FormDataContentType()
 
-	go func() {
-		defer pw.Close()
-
-		field, err := writer.CreateFormField("request")
-		if err != nil {
-			_ = pw.CloseWithError(err)
-			return
-		}
-		if _, err := field.Write(requestJSON); err != nil {
-			_ = pw.CloseWithError(err)
-			return
-		}
-
-		fileHeader := make(textproto.MIMEHeader)
-		fileHeader.Set("Content-Disposition", `form-data; name="fileContent"; filename="asset"`)
-		fileHeader.Set("Content-Type", contentType)
-
-		filePart, err := writer.CreatePart(fileHeader)
-		if err != nil {
-			_ = pw.CloseWithError(err)
-			return
-		}
-		if _, err := io.Copy(filePart, bytes.NewReader(data.Bytes())); err != nil {
-			_ = pw.CloseWithError(err)
-			return
-		}
-		if err := writer.Close(); err != nil {
-			_ = pw.CloseWithError(err)
-			return
-		}
-	}()
-
-	req, err := http.NewRequest("POST", createAssetURL, pr)
+	field, err := writer.CreateFormField("request")
 	if err != nil {
-		_ = pr.Close()
+		return nil, err
+	}
+	if _, err := field.Write(requestJSON); err != nil {
+		return nil, err
+	}
+
+	fileHeader := make(textproto.MIMEHeader)
+	fileHeader.Set("Content-Disposition", `form-data; name="fileContent"; filename="asset"`)
+	fileHeader.Set("Content-Type", contentType)
+
+	filePart, err := writer.CreatePart(fileHeader)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := filePart.Write(data.Bytes()); err != nil {
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", createAssetURL, bytes.NewReader(buf.Bytes()))
+	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "RobloxStudio/WinInet")

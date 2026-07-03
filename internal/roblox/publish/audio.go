@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 
 	"github.com/kartFr/Asset-Reuploader/internal/roblox"
@@ -50,24 +49,12 @@ func xorBytes(data []byte, key byte) []byte {
 	return out
 }
 
-func newUploadAudioRequest(name string, data *bytes.Buffer, groupID ...int64) (*http.Request, error) {
-	var buffer bytes.Buffer
-	encoder := base64.NewEncoder(base64.StdEncoding, &buffer)
-	size := int64(data.Len())
-	if _, err := io.Copy(encoder, data); err != nil {
-		return nil, err
-	}
-	if err := encoder.Close(); err != nil {
-		return nil, err
-	}
-
+func newUploadAudioRequest(name string, file string, size int64, groupID int64) (*http.Request, error) {
 	body := uploadAudioRequest{
 		Name:              name,
-		File:              buffer.String(),
+		File:              file,
 		EstimatedFileSize: size,
-	}
-	if len(groupID) > 0 {
-		body.GroupID = groupID[0]
+		GroupID:           groupID,
 	}
 
 	jsonBody, err := json.Marshal(body)
@@ -86,12 +73,23 @@ func newUploadAudioRequest(name string, data *bytes.Buffer, groupID ...int64) (*
 }
 
 func NewUploadAudioHandler(c *roblox.Client, name string, data *bytes.Buffer, groupID ...int64) (func() (*publishAudioResponse, error), error) {
-	req, err := newUploadAudioRequest(name, data, groupID...)
-	if err != nil {
-		return func() (*publishAudioResponse, error) { return nil, nil }, err
+	// Encode once without draining data: the old io.Copy from the buffer emptied it,
+	// so the moderated-rename retry rebuilt the request with an empty file.
+	file := base64.StdEncoding.EncodeToString(data.Bytes())
+	size := int64(data.Len())
+	var group int64
+	if len(groupID) > 0 {
+		group = groupID[0]
 	}
+	currentName := name
 
 	return func() (*publishAudioResponse, error) {
+		// Fresh request per attempt: a shared *http.Request would resend a consumed
+		// body on retry and stack duplicate Cookie headers.
+		req, err := newUploadAudioRequest(currentName, file, size, group)
+		if err != nil {
+			return nil, err
+		}
 		req.AddCookie(&http.Cookie{
 			Name:  ".ROBLOSECURITY",
 			Value: c.Cookie,
@@ -117,7 +115,7 @@ func NewUploadAudioHandler(c *roblox.Client, name string, data *bytes.Buffer, gr
 
 			message := response.Errors[0].Message
 			if message == "Audio name or description is moderated." {
-				req, _ = newUploadAudioRequest("[Censored]", data, groupID...)
+				currentName = "[Censored]"
 				return nil, UploadAudioErrors.ErrModerated
 			}
 

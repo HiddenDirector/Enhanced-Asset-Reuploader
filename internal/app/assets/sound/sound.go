@@ -18,7 +18,6 @@ import (
 	"github.com/kartFr/Asset-Reuploader/internal/atomicarray"
 	"github.com/kartFr/Asset-Reuploader/internal/color"
 	"github.com/kartFr/Asset-Reuploader/internal/retry"
-	"github.com/kartFr/Asset-Reuploader/internal/roblox"
 	"github.com/kartFr/Asset-Reuploader/internal/roblox/assetdelivery"
 	"github.com/kartFr/Asset-Reuploader/internal/roblox/assets"
 	"github.com/kartFr/Asset-Reuploader/internal/roblox/develop"
@@ -100,10 +99,6 @@ func Reupload(ctx *context.Context, r *request.Request) {
 	}
 
 	grantPermissions := func(newID int64) (*assets.PermissionResponse, error) {
-		permissionsClient, _ := roblox.NewClient("")
-		permissionsClient.Cookie = client.Cookie
-		permissionsClient.SetToken(client.GetToken())
-
 		permissionHandler, err := assets.NewUpdatePermissionsHandler(client, newID, permissionRequest)
 		if err != nil {
 			return nil, err
@@ -311,6 +306,7 @@ func Reupload(ctx *context.Context, r *request.Request) {
 		placeCache, err := getCreatorPlaceCache(creatorID, creatorType)
 		if err != nil {
 			newBatchError(len(creatorAssets), "Failed to get creator places", err)
+			return
 		}
 
 		assetInfoMap := make(map[int64]*develop.AssetInfo)

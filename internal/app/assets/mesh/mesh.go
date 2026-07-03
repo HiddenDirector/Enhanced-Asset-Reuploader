@@ -185,6 +185,11 @@ func Reupload(ctx *context.Context, r *request.Request) {
 				uploadWG.Done()
 				continue
 			}
+			if len(locationInfo.Locations) == 0 {
+				newUploadError("Failed to get asset location for", assetInfo, "no download URL returned")
+				uploadWG.Done()
+				continue
+			}
 
 			location := locationInfo.Locations[0].Location
 			go uploadAsset(&uploadWG, assetInfo, location)

@@ -61,16 +61,7 @@ type AssetLocation struct {
 	} `json:"contentRepresentationSpecifier"`
 }
 
-func newBatchRequest(body []*AssetRequestItem, placeID int64) (*http.Request, error) {
-	if len(body) > 50 {
-		return nil, ErrBodyTooLarge
-	}
-
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-
+func newBatchRequest(jsonBody []byte, placeID int64) (*http.Request, error) {
 	req, err := http.NewRequest("POST", "https://assetdelivery.roblox.com/v2/assets/batch", bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, err
@@ -88,12 +79,22 @@ func NewBatchHandler(c *roblox.Client, body []*AssetRequestItem, placeID ...int6
 		placeIDValue = placeID[0]
 	}
 
-	req, err := newBatchRequest(body, placeIDValue)
+	if len(body) > 50 {
+		return func() ([]*AssetLocation, error) { return nil, nil }, ErrBodyTooLarge
+	}
+
+	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return func() ([]*AssetLocation, error) { return nil, nil }, err
 	}
 
+	// Build a fresh request per attempt: reusing one *http.Request across retries
+	// resends an already-consumed body and stacks duplicate Cookie headers.
 	return func() ([]*AssetLocation, error) {
+		req, err := newBatchRequest(jsonBody, placeIDValue)
+		if err != nil {
+			return nil, err
+		}
 		req.AddCookie(&http.Cookie{
 			Name:  ".ROBLOSECURITY",
 			Value: c.Cookie,

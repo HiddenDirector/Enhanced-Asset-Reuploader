@@ -70,12 +70,17 @@ func newAssetsInfoRequest(assetIDs []int64) (*http.Request, error) {
 }
 
 func NewAssetsInfoHandler(c *roblox.Client, assetIDs []int64) (func() (GetAssetsInfoResponse, error), error) {
-	req, err := newAssetsInfoRequest(assetIDs)
-	if err != nil {
+	// Validate the request once, but build a fresh one per attempt so retries
+	// don't stack duplicate Cookie headers on a shared *http.Request.
+	if _, err := newAssetsInfoRequest(assetIDs); err != nil {
 		return func() (GetAssetsInfoResponse, error) { return GetAssetsInfoResponse{}, nil }, err
 	}
 
 	return func() (GetAssetsInfoResponse, error) {
+		req, err := newAssetsInfoRequest(assetIDs)
+		if err != nil {
+			return GetAssetsInfoResponse{}, err
+		}
 		req.AddCookie(&http.Cookie{
 			Name:  ".ROBLOSECURITY",
 			Value: c.Cookie,

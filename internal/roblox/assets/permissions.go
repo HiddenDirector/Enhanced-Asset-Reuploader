@@ -35,12 +35,7 @@ type PermissionResponse struct {
 	} `json:"errors,omitempty"`
 }
 
-func newUpdatePermissionsRequest(assetID int64, body PermissionRequest) (*http.Request, error) {
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-
+func newUpdatePermissionsRequest(assetID int64, jsonBody []byte) (*http.Request, error) {
 	url := fmt.Sprintf("https://apis.roblox.com/asset-permissions-api/v1/assets/%d/permissions", assetID)
 	req, err := http.NewRequest("PATCH", url, bytes.NewReader(jsonBody))
 	if err != nil {
@@ -52,12 +47,18 @@ func newUpdatePermissionsRequest(assetID int64, body PermissionRequest) (*http.R
 }
 
 func NewUpdatePermissionsHandler(c *roblox.Client, assetID int64, body PermissionRequest) (func() (*PermissionResponse, error), error) {
-	req, err := newUpdatePermissionsRequest(assetID, body)
+	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return func() (*PermissionResponse, error) { return nil, nil }, err
 	}
 
+	// Fresh request per attempt: a shared *http.Request would resend a consumed
+	// body on retry and stack duplicate Cookie headers.
 	return func() (*PermissionResponse, error) {
+		req, err := newUpdatePermissionsRequest(assetID, jsonBody)
+		if err != nil {
+			return nil, err
+		}
 		req.AddCookie(&http.Cookie{
 			Name:  ".ROBLOSECURITY",
 			Value: c.Cookie,
