@@ -1,44 +1,69 @@
-<div align="center">
-        <img src="https://github.com/user-attachments/assets/4e753b87-3069-4a8f-824b-69fc910584c5" alt="Icon" />
-    <br><br>
-    <a href="https://github.com/kartFr/Asset-Reuploader/releases/latest"><img src="https://img.shields.io/github/downloads/kartfr/Asset-Reuploader/total?color=yellow" alt="Latest download" /></a>
-    <a href="https://github.com/kartFr/Asset-Reuploader/releases/latest"><img src="https://img.shields.io/github/v/release/kartfr/Asset-Reuploader?color=yellow" alt="Latest release" /></a>
-    <a href="https://discord.gg/XTEtUqPTat"><img src="https://img.shields.io/discord/1238572493925646347?label=discord&logo=discord&logoColor=white&color=yellow" alt="Discord" /></a>
-    <a href="https://github.com/kartFr/Asset-Reuploader?tab=GPL-3.0-1-ov-file"><img src="https://img.shields.io/github/license/kartFr/Asset-Reuploader?color=yellow" alt="License" /></a>
-</div>
+# Enhanced Asset-Reuploader
 
-#
+A maintained build of [kartFr/Asset-Reuploader](https://github.com/kartFr/Asset-Reuploader)
+with the HTTP/upload layer reworked for reliability. All credit for the
+original tool — the Roblox Studio plugin, the reupload workflow, and the Go
+server design — belongs to [kartFr](https://github.com/kartFr); this
+repository focuses on fixing transport-level bugs in the upload paths.
 
-Roblox asset reuploader using a [roblox plugin](https://create.roblox.com/store/asset/89096096219225/Asset-Reuploader) and go.
+**What it does:** reuploads Roblox assets (animations, audio, meshes) to an
+account or group you control, via a Roblox Studio plugin talking to a local
+Go server. Needed because assets owned by another account can't be used
+directly in your own experiences.
 
-Intended to reupload assets since you are unable to use assets if another account owns them.
+## What this version changes
 
-### Community
+All changes are in the Go server's HTTP/upload layer (see commit history for
+full detail):
 
-Join the [discord](https://discord.gg/XTEtUqPTat) and interact with the community. We have:
+- **Retries actually work now.** Request handlers used to resend a shared
+  `http.Request` whose body had already been consumed — every retry after a
+  failure sent an *empty* POST/PATCH and stacked duplicate `Cookie` headers.
+  Each attempt now builds a fresh request.
+- **Connection pooling.** The HTTP transport keeps a 32-per-host idle
+  connection pool (Go's default is 2), avoiding a TLS handshake per request
+  during concurrent uploads.
+- **Upload bodies built in memory** with a real `Content-Length` and
+  `GetBody`, replacing an `io.Pipe` goroutine per attempt.
+- **Audio fixes:** encoding no longer drains the buffer (the moderated-name
+  retry used to upload an empty file); renames go through handler state
+  instead of a stale request.
+- **Crash fixes:** missing return on place-cache failure in the sound path
+  (nil dereference); mesh handling guards against location entries with no
+  URLs and no errors.
+- **Regression tests** covering per-attempt request construction and
+  multipart bodies, plus release-workflow fixes (version `ldflags`).
 
-- Reuploader themes
-- Reuploader support
-- Coding support
-- Early access to updates when supporting me
-- Advertise your game/discord server
+Everything else — plugin behaviour, supported asset types, configuration —
+matches upstream. For general usage documentation and community support, see
+the upstream [README](https://github.com/kartFr/Asset-Reuploader#readme);
+that project's Discord and release channels belong to the original author.
 
-### Currently supported assets
+## Usage
 
-- Animations
-- Audio (paid, join discord)
-- Meshes (paid)
+1. Install the [Asset-Reuploader plugin](https://create.roblox.com/store/asset/89096096219225/Asset-Reuploader)
+   in Roblox Studio.
+2. Build and run the server:
 
-## Contributing
+   ```bash
+   go build -o asset-reuploader ./cmd/assetreuploader
+   ./asset-reuploader
+   ```
 
-ALL contributions are welcome. Feel free to make a pull/fork at any time. Please read the [contribution guide](https://github.com/kartFr/Asset-Reuploader/blob/main/CONTRIBUTING.md).
+3. Configure via `config.ini` (port, cookie, reupload target). The startup
+   message prints the port the plugin should connect to.
 
-The [discord](https://discord.gg/XTEtUqPTat) does have a dedicated suggestions channel. If you do have a feature request please do put it in there. But, you do have free will, so choose whichever.
+## Project structure
 
-If you do need help with anything from stupid questions(pls no) to setting up a fork feel free to DM me on discord, my tag is alekfart.
+```
+cmd/assetreuploader/   server entry point + router
+internal/app/          per-asset handlers (animation, audio, mesh)
+internal/roblox/       Roblox API client, upload requests, rate limiting
+internal/retry/        retry primitives
+plugin/                Roblox Studio plugin source (Luau)
+plugin_tests/          plugin test suite
+```
 
 ## License
 
-Copyright (c) 2024, kartFr
-
-Licensed under the [GPL-3.0](https://github.com/kartFr/Asset-Reuploader/blob/main/LICENSE.txt) license.
+GPL-3.0, inherited from the original project by kartFr. See [LICENSE](LICENSE).
